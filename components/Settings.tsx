@@ -67,6 +67,16 @@ export const Settings: React.FC = () => {
               <input {...register('email')} className="w-full rounded-lg border-slate-300 border px-4 py-2.5 focus:ring-2 focus:ring-blue-500" />
             </div>
 
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Drug License No. 1 (20B)</label>
+              <input {...register('dlNo1')} className="w-full rounded-lg border-slate-300 border px-4 py-2.5 focus:ring-2 focus:ring-blue-500" placeholder="e.g. MH-MZ1-000000" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Drug License No. 2 (21B)</label>
+              <input {...register('dlNo2')} className="w-full rounded-lg border-slate-300 border px-4 py-2.5 focus:ring-2 focus:ring-blue-500" placeholder="e.g. MH-MZ1-000000" />
+            </div>
+
              <div className="col-span-1 md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">Address Line 1</label>
               <input {...register('addressLine1')} className="w-full rounded-lg border-slate-300 border px-4 py-2.5 focus:ring-2 focus:ring-blue-500" />

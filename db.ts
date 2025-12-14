@@ -46,6 +46,8 @@ export const seedDatabase = async () => {
       addressLine1: '123, Pharma Market, Sector 5',
       addressLine2: 'Mumbai, Maharashtra - 400001',
       gstin: '27AAAAA0000A1Z5',
+      dlNo1: 'MH-MZ1-000001',
+      dlNo2: 'MH-MZ1-000002',
       phone: '+91 98765 43210',
       email: 'info@gopidistributors.com',
       terms: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is not made within due date.\n3. All disputes subject to Mumbai Jurisdiction.'

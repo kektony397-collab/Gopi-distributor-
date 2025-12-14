@@ -17,7 +17,7 @@ export const Inventory: React.FC = () => {
   const products = useLiveQuery(
     () => db.products
       .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.batch.toLowerCase().includes(searchTerm.toLowerCase()))
-      .limit(100) // Limit display for performance
+      .limit(100)
       .toArray(),
     [searchTerm]
   );
@@ -70,22 +70,31 @@ export const Inventory: React.FC = () => {
     }
   };
 
-  // Improved Fuzzy Column Matcher
+  // Advanced Fuzzy Column Matcher for Automatic Recognition
   const getValue = (row: any, keys: string[]): any => {
     const rowKeys = Object.keys(row);
     for (const key of keys) {
-      // Exact match
+      // 1. Exact match
       if (row[key] !== undefined) return row[key];
       
-      // Case insensitive match
+      // 2. Case insensitive match
       const foundKey = rowKeys.find(k => k.toLowerCase().trim() === key.toLowerCase().trim());
       if (foundKey) return row[foundKey];
 
-      // Remove dots and special chars (e.g. M.R.P. -> MRP)
+      // 3. Normalized match (remove special chars)
       const cleanKey = rowKeys.find(k => k.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase());
       if (cleanKey) return row[cleanKey];
     }
     return undefined;
+  };
+
+  const parseNumber = (val: any, defaultVal: number = 0): number => {
+    if (!val) return defaultVal;
+    if (typeof val === 'number') return val;
+    // Remove symbols like ₹, comma, spaces
+    const cleanStr = String(val).replace(/[^0-9.-]/g, '');
+    const num = parseFloat(cleanStr);
+    return isNaN(num) ? defaultVal : num;
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,6 +110,7 @@ export const Inventory: React.FC = () => {
         const wb = XLSX.read(bstr, { type: 'binary' });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
+        // Parse with header: 1 to get raw array for header inspection if needed, but simple sheet_to_json works well for standard tables
         const data = XLSX.utils.sheet_to_json(ws);
 
         if (data.length === 0) {
@@ -109,25 +119,50 @@ export const Inventory: React.FC = () => {
            return;
         }
 
-        // Map excel data with flexible keys
-        const productsToAdd: any[] = data.map((row: any) => ({
-          name: getValue(row, ['Product Name', 'Name', 'Item Name', 'Description']) || 'Unknown Product',
-          batch: getValue(row, ['Batch', 'Batch No', 'BatchNo', 'Lot']) || 'N/A',
-          expiry: getValue(row, ['Expiry', 'Exp', 'Exp Date', 'Expiry Date']) || '2026-01-01',
-          hsn: String(getValue(row, ['HSN', 'HSN Code', 'HsnCode']) || '3004'),
-          gstRate: Number(getValue(row, ['GST', 'GST%', 'Tax', 'Tax Rate']) || 12),
-          mrp: Number(getValue(row, ['MRP', 'M.R.P.', 'M.R.P']) || 0),
-          purchaseRate: Number(getValue(row, ['Rate', 'Purchase Rate', 'P Rate', 'Cost']) || 0),
-          saleRate: Number(getValue(row, ['Sale Rate', 'S Rate', 'Selling Price', 'Rate']) || 0), // Fallback to Rate if Sale Rate missing
-          stock: Number(getValue(row, ['Stock', 'Qty', 'Quantity', 'Balance']) || 0),
-          manufacturer: getValue(row, ['Manufacturer', 'Mfg', 'Company']) || '',
-        }));
+        // Automatic mapping logic
+        const productsToAdd: any[] = data.map((row: any) => {
+           // Fuzzy match Name
+           const name = getValue(row, ['Product Name', 'Name', 'Item Name', 'Description', 'Particulars', 'Item', 'Medicine Name']);
+           // Fuzzy match MRP
+           const mrpRaw = getValue(row, ['MRP', 'M.R.P.', 'M.R.P', 'Max Price', 'Price']);
+           // Fuzzy match Rate
+           const rateRaw = getValue(row, ['Rate', 'Purchase Rate', 'P Rate', 'Cost', 'P.Rate', 'Billing Rate']);
+           // Fuzzy match Sale Rate (optional, fallback to Rate)
+           const saleRateRaw = getValue(row, ['Sale Rate', 'S Rate', 'Selling Price', 'S.Rate']);
+           // Fuzzy match Stock
+           const stockRaw = getValue(row, ['Stock', 'Qty', 'Quantity', 'Balance', 'Closing Stock', 'Op. Stock']);
+           // Fuzzy match Batch
+           const batch = getValue(row, ['Batch', 'Batch No', 'BatchNo', 'Lot', 'Lot No']) || 'N/A';
+           // Fuzzy match Expiry
+           const expiry = getValue(row, ['Expiry', 'Exp', 'Exp Date', 'Expiry Date', 'Valid Upto']) || '2026-01-01';
+           
+           // Process numbers
+           const mrp = parseNumber(mrpRaw, 0);
+           const purchaseRate = parseNumber(rateRaw, 0);
+           const saleRate = parseNumber(saleRateRaw, 0) || (purchaseRate > 0 ? purchaseRate * 1.2 : mrp); // Fallback logic
+           
+           // Stock logic: Default to 1 if missing, 0, or negative
+           let stock = parseNumber(stockRaw, 0);
+           if (stock <= 0) stock = 1;
 
-        // Batch processing for UI responsiveness if extremely large, 
-        // but Dexie bulkAdd is very efficient for ~50k rows.
+           return {
+             name: String(name || 'Unknown Product').trim(),
+             batch: String(batch).trim(),
+             expiry: String(expiry).trim(), // Simple string, ideally parse Date
+             hsn: String(getValue(row, ['HSN', 'HSN Code', 'HsnCode']) || '3004'),
+             gstRate: parseNumber(getValue(row, ['GST', 'GST%', 'Tax', 'Tax Rate', 'IGST']), 12),
+             mrp,
+             purchaseRate,
+             saleRate,
+             stock,
+             manufacturer: String(getValue(row, ['Manufacturer', 'Mfg', 'Company', 'Brand']) || ''),
+           };
+        }).filter(p => p.name !== 'Unknown Product'); // Filter out empty rows
+
+        // Bulk Add (Efficiently appends data)
         await db.products.bulkAdd(productsToAdd);
         
-        toast.success(`Successfully imported ${productsToAdd.length} products!`);
+        toast.success(`Successfully imported ${productsToAdd.length} products with automatic mapping!`);
       } catch (error) {
         console.error("Import failed", error);
         toast.error('Import failed. Please check file format.');

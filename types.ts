@@ -12,6 +12,8 @@ export interface CompanyProfile {
   addressLine1: string;
   addressLine2: string;
   gstin: string;
+  dlNo1: string; // Drug License 1
+  dlNo2: string; // Drug License 2
   phone: string;
   email: string;
   terms: string;

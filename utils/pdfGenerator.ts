@@ -9,6 +9,8 @@ export const generateInvoicePDF = async (invoice: Invoice) => {
   const address1 = profile?.addressLine1 || 'Address Line 1';
   const address2 = profile?.addressLine2 || 'City, State - Zip';
   const gstin = profile?.gstin || '27AAAAA0000A1Z5';
+  const dl1 = profile?.dlNo1 || '';
+  const dl2 = profile?.dlNo2 || '';
   const phone = profile?.phone || '';
   const terms = profile?.terms?.split('\n') || ['Goods once sold will not be taken back.'];
 
@@ -29,8 +31,18 @@ export const generateInvoicePDF = async (invoice: Invoice) => {
   doc.setTextColor(0, 0, 0);
   doc.text(address1, 14, 26);
   doc.text(address2, 14, 31);
-  doc.text(`GSTIN: ${gstin}`, 14, 36);
-  if(phone) doc.text(`Phone: ${phone}`, 14, 41);
+  
+  let currentY = 36;
+  doc.text(`GSTIN: ${gstin}`, 14, currentY);
+  currentY += 5;
+  
+  if (dl1 || dl2) {
+    const dlText = [dl1 ? `DL 1: ${dl1}` : '', dl2 ? `DL 2: ${dl2}` : ''].filter(Boolean).join(' | ');
+    doc.text(dlText, 14, currentY);
+    currentY += 5;
+  }
+
+  if(phone) doc.text(`Phone: ${phone}`, 14, currentY);
 
   // Invoice Details
   doc.setFontSize(14);
@@ -41,15 +53,15 @@ export const generateInvoicePDF = async (invoice: Invoice) => {
 
   // Divider
   doc.setDrawColor(200, 200, 200);
-  doc.line(14, 45, 196, 45);
+  doc.line(14, 48, 196, 48);
 
   // Bill To
   doc.setFontSize(11);
-  doc.text('Bill To:', 14, 52);
+  doc.text('Bill To:', 14, 55);
   doc.setFontSize(10);
-  doc.text(invoice.partyName, 14, 58);
-  doc.text(invoice.partyAddress, 14, 63);
-  doc.text(`GSTIN: ${invoice.partyGstin}`, 14, 68);
+  doc.text(invoice.partyName, 14, 61);
+  doc.text(invoice.partyAddress, 14, 66);
+  doc.text(`GSTIN: ${invoice.partyGstin}`, 14, 71);
 
   // Table
   const tableColumn = ["SN", "Item", "HSN", "Batch", "Exp", "Qty", "Rate", "Disc%", "Taxable", "GST%", "Amount"];
@@ -78,7 +90,7 @@ export const generateInvoicePDF = async (invoice: Invoice) => {
   autoTable(doc, {
     head: [tableColumn],
     body: tableRows,
-    startY: 75,
+    startY: 78,
     theme: 'grid',
     styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [26, 86, 219], textColor: [255, 255, 255] },
