@@ -6,6 +6,7 @@ import { Inventory } from './components/Inventory';
 import { Parties } from './components/Parties';
 import { InvoiceForm } from './components/InvoiceForm';
 import { InvoiceList } from './components/InvoiceList';
+import { Settings } from './components/Settings';
 import { seedDatabase } from './db';
 import { Toaster } from 'sonner';
 
@@ -24,6 +25,7 @@ const App: React.FC = () => {
           <Route path="/parties" element={<Parties />} />
           <Route path="/billing" element={<InvoiceForm />} />
           <Route path="/invoices" element={<InvoiceList />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </Layout>
       <Toaster position="top-right" />

@@ -4,17 +4,20 @@ import * as XLSX from 'xlsx';
 import { db } from '../db';
 import { Product, GSTRate } from '../types';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Search, Plus, Upload, Trash2, Edit2, X } from 'lucide-react';
+import { Search, Plus, Upload, Trash2, Edit2, X, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
+import { toast } from 'sonner';
 
 export const Inventory: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   
   const products = useLiveQuery(
     () => db.products
       .filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.batch.toLowerCase().includes(searchTerm.toLowerCase()))
+      .limit(100) // Limit display for performance
       .toArray(),
     [searchTerm]
   );
@@ -28,7 +31,7 @@ export const Inventory: React.FC = () => {
       });
     } else {
       reset({
-        gstRate: GSTRate.GST_12, // Default
+        gstRate: GSTRate.GST_12,
       });
     }
   }, [editingProduct, setValue, reset]);
@@ -46,52 +49,93 @@ export const Inventory: React.FC = () => {
 
       if (editingProduct?.id) {
         await db.products.update(editingProduct.id, formattedData);
+        toast.success('Product updated successfully');
       } else {
         await db.products.add(formattedData);
+        toast.success('Product added successfully');
       }
       setIsModalOpen(false);
       setEditingProduct(null);
       reset();
     } catch (error) {
       console.error("Failed to save product", error);
-      alert("Error saving product");
+      toast.error('Error saving product');
     }
   };
 
   const handleDelete = async (id: number) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
       await db.products.delete(id);
+      toast.success('Product deleted');
     }
+  };
+
+  // Improved Fuzzy Column Matcher
+  const getValue = (row: any, keys: string[]): any => {
+    const rowKeys = Object.keys(row);
+    for (const key of keys) {
+      // Exact match
+      if (row[key] !== undefined) return row[key];
+      
+      // Case insensitive match
+      const foundKey = rowKeys.find(k => k.toLowerCase().trim() === key.toLowerCase().trim());
+      if (foundKey) return row[foundKey];
+
+      // Remove dots and special chars (e.g. M.R.P. -> MRP)
+      const cleanKey = rowKeys.find(k => k.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase());
+      if (cleanKey) return row[cleanKey];
+    }
+    return undefined;
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsImporting(true);
+
     const reader = new FileReader();
     reader.onload = async (evt) => {
-      const bstr = evt.target?.result;
-      const wb = XLSX.read(bstr, { type: 'binary' });
-      const wsname = wb.SheetNames[0];
-      const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json(ws);
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
 
-      // Map excel data to Product interface
-      const productsToAdd: any[] = data.map((row: any) => ({
-        name: row['Name'] || row['Product Name'],
-        batch: row['Batch'] || 'N/A',
-        expiry: row['Expiry'] || '2026-01-01', // Ideally parse date
-        hsn: String(row['HSN'] || '3004'),
-        gstRate: Number(row['GST'] || 12),
-        mrp: Number(row['MRP'] || 0),
-        purchaseRate: Number(row['Rate'] || 0), // Assuming purchase rate in sheet
-        saleRate: Number(row['Rate'] || 0) * 1.2, // Dummy logic if sale rate missing
-        stock: Number(row['Stock'] || 0),
-        manufacturer: row['Manufacturer'] || '',
-      }));
+        if (data.length === 0) {
+           toast.error('Excel file is empty');
+           setIsImporting(false);
+           return;
+        }
 
-      await db.products.bulkAdd(productsToAdd);
-      alert(`Imported ${productsToAdd.length} products successfully!`);
+        // Map excel data with flexible keys
+        const productsToAdd: any[] = data.map((row: any) => ({
+          name: getValue(row, ['Product Name', 'Name', 'Item Name', 'Description']) || 'Unknown Product',
+          batch: getValue(row, ['Batch', 'Batch No', 'BatchNo', 'Lot']) || 'N/A',
+          expiry: getValue(row, ['Expiry', 'Exp', 'Exp Date', 'Expiry Date']) || '2026-01-01',
+          hsn: String(getValue(row, ['HSN', 'HSN Code', 'HsnCode']) || '3004'),
+          gstRate: Number(getValue(row, ['GST', 'GST%', 'Tax', 'Tax Rate']) || 12),
+          mrp: Number(getValue(row, ['MRP', 'M.R.P.', 'M.R.P']) || 0),
+          purchaseRate: Number(getValue(row, ['Rate', 'Purchase Rate', 'P Rate', 'Cost']) || 0),
+          saleRate: Number(getValue(row, ['Sale Rate', 'S Rate', 'Selling Price', 'Rate']) || 0), // Fallback to Rate if Sale Rate missing
+          stock: Number(getValue(row, ['Stock', 'Qty', 'Quantity', 'Balance']) || 0),
+          manufacturer: getValue(row, ['Manufacturer', 'Mfg', 'Company']) || '',
+        }));
+
+        // Batch processing for UI responsiveness if extremely large, 
+        // but Dexie bulkAdd is very efficient for ~50k rows.
+        await db.products.bulkAdd(productsToAdd);
+        
+        toast.success(`Successfully imported ${productsToAdd.length} products!`);
+      } catch (error) {
+        console.error("Import failed", error);
+        toast.error('Import failed. Please check file format.');
+      } finally {
+        setIsImporting(false);
+        // Reset file input
+        e.target.value = '';
+      }
     };
     reader.readAsBinaryString(file);
   };
@@ -101,11 +145,19 @@ export const Inventory: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-slate-800">Inventory Management</h2>
         <div className="flex gap-2">
-          <label className="btn-secondary cursor-pointer flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 shadow-sm transition-all">
-            <Upload className="w-4 h-4 mr-2" />
-            Import Excel
-            <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleFileUpload} />
-          </label>
+          {isImporting ? (
+             <div className="flex items-center px-4 py-2 bg-slate-100 rounded-lg text-slate-500">
+               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+               Importing...
+             </div>
+          ) : (
+            <label className="btn-secondary cursor-pointer flex items-center px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 shadow-sm transition-all">
+              <Upload className="w-4 h-4 mr-2" />
+              Import Excel
+              <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={handleFileUpload} />
+            </label>
+          )}
+          
           <button 
             onClick={() => { setEditingProduct(null); setIsModalOpen(true); }}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-all"
@@ -171,7 +223,9 @@ export const Inventory: React.FC = () => {
               ))}
               {products?.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-slate-500">No products found.</td>
+                  <td colSpan={7} className="px-6 py-8 text-center text-slate-500">
+                    {searchTerm ? "No matching products found." : "No products in inventory. Import Excel file to get started."}
+                  </td>
                 </tr>
               )}
             </tbody>

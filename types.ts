@@ -6,6 +6,17 @@ export enum GSTRate {
   GST_28 = 28,
 }
 
+export interface CompanyProfile {
+  id?: number;
+  companyName: string;
+  addressLine1: string;
+  addressLine2: string;
+  gstin: string;
+  phone: string;
+  email: string;
+  terms: string;
+}
+
 export interface Product {
   id?: number;
   name: string;

@@ -153,7 +153,7 @@ export const InvoiceForm: React.FC = () => {
       });
       
       if (window.confirm('Invoice saved! Generate PDF?')) {
-        generateInvoicePDF(invoice);
+        await generateInvoicePDF(invoice);
       }
       navigate('/invoices');
     } catch (e) {

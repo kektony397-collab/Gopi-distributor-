@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ShoppingCart, Users, Package, FileText, Menu, X } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Users, Package, FileText, Menu, X, Settings as SettingsIcon } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db';
 import clsx from 'clsx';
 
 interface LayoutProps {
@@ -11,12 +13,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
+  const profile = useLiveQuery(() => db.settings.get(1));
+
   const navItems = [
     { label: 'Dashboard', path: '/', icon: LayoutDashboard },
     { label: 'New Bill', path: '/billing', icon: ShoppingCart },
     { label: 'Invoices', path: '/invoices', icon: FileText },
     { label: 'Inventory', path: '/inventory', icon: Package },
     { label: 'Parties', path: '/parties', icon: Users },
+    { label: 'Settings', path: '/settings', icon: SettingsIcon },
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -29,12 +34,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
               <Link to="/" className="text-2xl font-bold tracking-tight">
-                Gopi Distributors
+                {profile?.companyName || 'Gopi Distributors'}
               </Link>
             </div>
             
             {/* Desktop Nav */}
-            <nav className="hidden md:flex space-x-4">
+            <nav className="hidden md:flex space-x-2">
               {navItems.map((item) => (
                 <Link
                   key={item.path}
@@ -100,7 +105,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       <footer className="bg-slate-900 text-slate-400 py-6 mt-auto">
         <div className="max-w-7xl mx-auto px-4 text-center">
           <p className="text-sm font-medium">Created By Yash K Pathak</p>
-          <p className="text-xs mt-1">&copy; {new Date().getFullYear()} Gopi Distributors. All rights reserved.</p>
+          <p className="text-xs mt-1">&copy; {new Date().getFullYear()} {profile?.companyName || 'Gopi Distributors'}. All rights reserved.</p>
         </div>
       </footer>
     </div>
